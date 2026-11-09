@@ -24,7 +24,14 @@ with apktool, applies the patch, rebuilds, zipaligns and signs it with a one-off
 - Some phones (HyperOS) block `adb install`; copy the APK to the phone and install it from the
   file manager.
 
-## Known issue (not patched)
+## Updating
 
-`MainActivity$18$2.run` (line 1714) can throw `IndexOutOfBoundsException` from
-`ArrayList.remove(0)` on an empty list. Seen once, not reproduced.
+The patched app updates itself from this repo's latest release (menu, Update). The vendor's
+update address (plain HTTP, no longer supported) is replaced by
+`releases/latest/download/WirelessRemote.xml` over HTTPS. Each push to `main` builds, signs
+(stable key, so updates install in place) and publishes `WirelessRemote-noir.apk` and the XML.
+
+## Fixed
+
+`MainActivity$18$2.run` removed an item from an already-empty device list
+(`IndexOutOfBoundsException`); the remove is now skipped when the index is out of range.
