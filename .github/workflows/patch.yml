@@ -2,11 +2,17 @@ name: patch-no-ir
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   patch:
     runs-on: ubuntu-latest
+    env:
+      VERSION: 2.2.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -14,6 +20,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Restore signing key
+        env:
+          KEY_B64: ${{ secrets.ARCHUD_KEYSTORE_B64 }}
+        run: |
+          test -n "$KEY_B64" || { echo "secret ARCHUD_KEYSTORE_B64 is not set"; exit 1; }
+          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/ks.p12"
 
       - name: Fetch apktool
         run: curl -fsSL -o apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
@@ -24,20 +37,39 @@ jobs:
       - name: Patch IR null check
         run: python3 patch_ir.py out
 
+      - name: Patch updater and list guard
+        run: python3 patch_update.py out
+
+      - name: Stamp version
+        run: |
+          sed -i "s/versionCode: .*/versionCode: '${{ github.run_number }}'/; s/versionName: .*/versionName: $VERSION/" out/apktool.yml
+          grep -n -E "versionCode|versionName" out/apktool.yml
+
       - name: Rebuild
         run: java -jar apktool.jar b -o unsigned.apk out
 
       - name: Align and sign
+        env:
+          KS_PASS: ${{ secrets.ARCHUD_KEYSTORE_PASSWORD }}
         run: |
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           "$BT/zipalign" -p -f 4 unsigned.apk aligned.apk
-          keytool -genkeypair -keystore ks.p12 -storetype PKCS12 -alias k -keyalg RSA -keysize 2048 \
-            -validity 10000 -storepass changeit -dname "CN=noir-patch"
-          "$BT/apksigner" sign --ks ks.p12 --ks-key-alias k --ks-pass pass:changeit \
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/ks.p12" --ks-key-alias archud --ks-pass env:KS_PASS \
             --out WirelessRemote-noir.apk aligned.apk
           "$BT/apksigner" verify --verbose WirelessRemote-noir.apk | head -5
 
-      - uses: actions/upload-artifact@v4
+      - name: Update XML
+        run: |
+          TAG="build-${{ github.run_number }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/$TAG/WirelessRemote-noir.apk"
+          python3 make_update_xml.py WirelessRemote-noir.apk "$VERSION" "$URL" WirelessRemote.xml
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
         with:
-          name: WirelessRemote-noir
-          path: WirelessRemote-noir.apk
+          tag_name: build-${{ github.run_number }}
+          name: WirelessRemote ${{ env.VERSION }}
+          files: |
+            WirelessRemote-noir.apk
+            WirelessRemote.xml
+          make_latest: true
