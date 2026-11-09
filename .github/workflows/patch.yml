@@ -1,0 +1,43 @@
+name: patch-no-ir
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Fetch apktool
+        run: curl -fsSL -o apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar
+
+      - name: Decompile
+        run: java -jar apktool.jar d -f -o out WirelessRemote.apk
+
+      - name: Patch IR null check
+        run: python3 patch_ir.py out
+
+      - name: Rebuild
+        run: java -jar apktool.jar b -o unsigned.apk out
+
+      - name: Align and sign
+        run: |
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/zipalign" -p -f 4 unsigned.apk aligned.apk
+          keytool -genkeypair -keystore ks.p12 -storetype PKCS12 -alias k -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass changeit -dname "CN=noir-patch"
+          "$BT/apksigner" sign --ks ks.p12 --ks-key-alias k --ks-pass pass:changeit \
+            --out WirelessRemote-noir.apk aligned.apk
+          "$BT/apksigner" verify --verbose WirelessRemote-noir.apk | head -5
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WirelessRemote-noir
+          path: WirelessRemote-noir.apk
