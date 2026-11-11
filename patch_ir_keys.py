@@ -10,6 +10,15 @@ import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
+
+
+def die(msg, detail=""):
+    text = msg + ((" | " + detail) if detail else "")
+    text = text.replace("%", "%25").replace(chr(13), "").replace(chr(10), "%0A")
+    print("::error::" + text)
+    sys.exit(1)
+
+
 PKG = "Lcom/android/vs/wireless/remote/"
 MAIN = PKG + "MainActivity;"
 BRIDGE = PKG + "IrBridge;"
@@ -17,7 +26,7 @@ LISTENER = PKG + "MainActivity$13;"
 
 mains = list(root.rglob("MainActivity.smali"))
 if len(mains) != 1:
-    sys.exit(f"expected one MainActivity.smali, found {len(mains)}")
+    die(f"expected one MainActivity.smali, found {len(mains)}")
 main_path = mains[0]
 main = main_path.read_text(encoding="utf-8")
 
@@ -27,7 +36,7 @@ LOCALS = re.compile(r"^([ \t]*)\.(locals|registers) (\d+)[ \t]*$", re.M)
 def method_span(text, header_re):
     m = re.search(header_re + r".*?\.end method", text, re.S)
     if not m:
-        sys.exit("method not found: " + header_re)
+        die("method not found: " + header_re)
     return m
 
 
@@ -36,7 +45,7 @@ mb = method_span(main, r"\.method [^\n]*sendBroadcastMSG\(Ljava/lang/String;\)V\
 body = mb.group(0)
 lm = LOCALS.search(body)
 if not lm:
-    sys.exit("no .locals in sendBroadcastMSG")
+    die("no .locals in sendBroadcastMSG")
 n_locals = max(int(lm.group(3)), 1)
 hook_b = (
     f"{lm.group(1)}.{lm.group(2)} {n_locals}\n"
@@ -66,11 +75,11 @@ print("TvIp accessors:", sorted(accessors) or "none (direct field reads)")
 
 targets = list(root.rglob("MainActivity$13.smali"))
 if len(targets) != 1:
-    sys.exit(f"expected one MainActivity$13.smali, found {len(targets)}")
+    die(f"expected one MainActivity$13.smali, found {len(targets)}")
 lp = targets[0]
 lt = lp.read_text(encoding="utf-8")
 if not re.search(r"\.field [^\n]*this\$0:" + re.escape(MAIN), lt):
-    sys.exit("this$0 field not found in MainActivity$13")
+    die("this$0 field not found in MainActivity$13")
 mo = method_span(lt, r"\.method [^\n]*onClick\(Landroid/view/View;\)V\n")
 obody = mo.group(0)
 
@@ -90,10 +99,10 @@ for rx in READS:
     if m and (first is None or m.start() < first.start()):
         first = m
 if not first:
-    sys.exit("TvIp read not found in MainActivity$13.onClick")
+    die("TvIp read not found in MainActivity$13.onClick", obody[:1800])
 ll = LOCALS.search(obody)
 if not ll:
-    sys.exit("no .locals in onClick")
+    die("no .locals in onClick")
 old_n = int(ll.group(3))
 free = f"v{old_n}"
 dst = first.group("dst")

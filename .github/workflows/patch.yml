@@ -56,8 +56,11 @@ jobs:
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           AJ="$(ls -d "$ANDROID_HOME"/platforms/android-* | sort -V | tail -1)/android.jar"
           mkdir -p cls dexout
-          javac -source 8 -target 8 -bootclasspath "$AJ" -d cls ir/IrBridge.java
-          "$BT/d8" --release --min-api 19 --lib "$AJ" --output dexout $(find cls -name '*.class')
+          if ! out=$( { javac -source 8 -target 8 -bootclasspath "$AJ" -d cls ir/IrBridge.java \
+                 && "$BT/d8" --release --min-api 19 --lib "$AJ" --output dexout $(find cls -name '*.class'); } 2>&1 ); then
+            echo "::error::IR helper build failed: $(echo "$out" | tail -6 | tr '\n' ' ')"
+            exit 1
+          fi
           cp dexout/classes.dex classes2.dex
           zip -q -j unsigned.apk classes2.dex
           unzip -l unsigned.apk | grep -E "classes2?\.dex"
