@@ -18,7 +18,7 @@ xml = (
     f"    <path>{url}</path>\n"
     f"    <md5>{hashlib.md5(data).hexdigest()}</md5>\n"
     f"    <size>{len(data)}</size>\n"
-    "    <info>Works on phones without an IR blaster;Updates come from GitHub;</info>\n"
+    "    <info>Phones with IR: arrows/OK/back/home/menu/volume/mute work over IR when no TV is connected on Wi-Fi;Works on phones without an IR blaster;Updates come from GitHub;</info>\n"
     "  </Verison>\n"
     "</update>\n"
 )
